@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
 use crate::{
+    octal::Octal,
     symbolic::Symbolic,
     utils::{get_filetype_from_char, parse_octal_digit, parse_symbolic_execution_bit},
 };
@@ -72,6 +73,39 @@ impl From<Symbolic> for FilePermission {
             other,
             special: special_perms,
             filetype: get_filetype_from_char(symbolic_perm.filetype),
+        }
+    }
+}
+
+impl From<Octal> for FilePermission {
+    fn from(octal_perm: Octal) -> Self {
+        let special_perms = parse_octal_digit(octal_perm.special);
+
+        let [user, group, other]: [Permission; 3] =
+            [octal_perm.user, octal_perm.group, octal_perm.other]
+                .iter()
+                .zip(special_perms.iter())
+                .map(|(digit, is_special)| {
+                    Permission::from_octal_digit(*digit, *is_special).unwrap()
+                })
+                .collect::<Vec<Permission>>()
+                .try_into()
+                .unwrap();
+
+        let special_perms: [SpecialPermission; 3] = special_perms
+            .iter()
+            .zip([SUID, SGID, StickyBit])
+            .map(|(is_special, perm)| if *is_special { perm } else { Nil })
+            .collect::<Vec<SpecialPermission>>()
+            .try_into()
+            .unwrap();
+
+        FilePermission {
+            user,
+            group,
+            other,
+            special: special_perms,
+            filetype: get_filetype_from_char('0'),
         }
     }
 }
