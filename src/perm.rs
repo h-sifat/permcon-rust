@@ -3,12 +3,15 @@ use std::str::FromStr;
 use crate::{
     octal::Octal,
     symbolic::Symbolic,
-    utils::{get_filetype_from_char, parse_octal_digit, parse_symbolic_execution_bit},
+    utils::{
+        bool_arr_to_octal_digit, get_filetype_from_char, parse_octal_digit,
+        parse_symbolic_execution_bit,
+    },
 };
 
 const SPECIAL_CHARS: [char; 3] = ['s', 's', 't'];
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum SpecialPermission {
     SUID,
     SGID,
@@ -20,22 +23,42 @@ use crate::perm::SpecialPermission::*;
 
 #[derive(Debug)]
 pub struct FilePermission {
+    filetype: String,
     user: Permission,
     group: Permission,
     other: Permission,
-    filetype: String,
     special: [SpecialPermission; 3],
 }
 
 #[allow(dead_code)]
 impl FilePermission {
-    pub fn to_symbolic_string(&self) -> String {
+    pub fn to_symbolic_str(&self) -> String {
         return [&self.user, &self.group, &self.other]
             .iter()
             .zip(SPECIAL_CHARS.iter())
-            .map(|(perm, special_char)| perm.to_string(special_char))
+            .map(|(perm, special_char)| perm.to_symbolic_str(special_char))
             .collect::<Vec<String>>()
             .join("");
+    }
+
+    pub fn to_octal_str(&self) -> String {
+        let special_digit = {
+            let special: [bool; 3] = self
+                .special
+                .iter()
+                .map(|val| (*val != Nil))
+                .collect::<Vec<bool>>()
+                .try_into()
+                .unwrap();
+
+            bool_arr_to_octal_digit(special).to_string()
+        };
+
+        let group_digits = [&self.user, &self.group, &self.other]
+            .map(|perm| perm.to_octal_str().to_string())
+            .join("");
+
+        special_digit + &group_digits
     }
 }
 
@@ -110,6 +133,24 @@ impl From<Octal> for FilePermission {
     }
 }
 
+impl TryFrom<&str> for FilePermission {
+    type Error = String;
+
+    fn try_from(perm_str: &str) -> Result<Self, Self::Error> {
+        if Symbolic::is_valid(perm_str) {
+            let symbolic = Symbolic::from_str(perm_str).unwrap();
+            return Ok(FilePermission::from(symbolic));
+        }
+
+        if Octal::is_valid(perm_str) {
+            let octal = Octal::from_str(perm_str).unwrap();
+            return Ok(FilePermission::from(octal));
+        }
+
+        return Err(format!("Invalid file permission '{perm_str}'"));
+    }
+}
+
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct Permission {
@@ -149,7 +190,7 @@ impl Permission {
         });
     }
 
-    pub fn to_string(&self, special_char: &char) -> String {
+    pub fn to_symbolic_str(&self, special_char: &char) -> String {
         let mut permission = String::new();
 
         permission.push(if self.read { 'r' } else { '-' });
@@ -166,5 +207,9 @@ impl Permission {
         }
 
         return permission;
+    }
+
+    pub fn to_octal_str(&self) -> u8 {
+        bool_arr_to_octal_digit([self.read, self.write, self.execute])
     }
 }
