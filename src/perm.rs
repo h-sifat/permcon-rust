@@ -9,9 +9,11 @@ use crate::{
     },
 };
 
+use serde::{Serialize, Serializer};
+
 const SPECIAL_CHARS: [char; 3] = ['s', 's', 't'];
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum SpecialPermission {
     SUID,
     SGID,
@@ -21,12 +23,14 @@ pub enum SpecialPermission {
 
 use crate::perm::SpecialPermission::*;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct FilePermission {
     filetype: String,
     user: Permission,
     group: Permission,
     other: Permission,
+
+    #[serde(serialize_with = "serialize_special_permissions")]
     special: [SpecialPermission; 3],
 }
 
@@ -151,7 +155,7 @@ impl TryFrom<&str> for FilePermission {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 #[allow(dead_code)]
 pub struct Permission {
     pub read: bool,
@@ -212,4 +216,35 @@ impl Permission {
     pub fn to_octal_str(&self) -> u8 {
         bool_arr_to_octal_digit([self.read, self.write, self.execute])
     }
+}
+
+// ---------- Util to serialize FilePermission::special field -------------
+fn serialize_special_permissions<S>(
+    permissions: &[SpecialPermission; 3],
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    #[derive(Serialize)]
+    struct SerializedSpecialPermissions {
+        suid: bool,
+        sgid: bool,
+        sticky_bit: bool,
+    }
+
+    let [suid, sgid, sticky_bit]: [bool; 3] = permissions
+        .iter()
+        .map(|perm| *perm != SpecialPermission::Nil)
+        .collect::<Vec<bool>>()
+        .try_into()
+        .unwrap();
+
+    let special_permissions = SerializedSpecialPermissions {
+        suid,
+        sgid,
+        sticky_bit,
+    };
+
+    special_permissions.serialize(serializer)
 }
