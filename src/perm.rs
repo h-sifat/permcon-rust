@@ -13,7 +13,7 @@ use serde::{Serialize, Serializer};
 
 const SPECIAL_CHARS: [char; 3] = ['s', 's', 't'];
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 pub enum SpecialPermission {
     SUID,
     SGID,
@@ -23,26 +23,40 @@ pub enum SpecialPermission {
 
 use crate::perm::SpecialPermission::*;
 
+#[derive(Debug, PartialEq, Serialize)]
+pub enum SourceFormat {
+    Octal,
+    Symbolic,
+}
+
 #[derive(Debug, Serialize)]
 pub struct FilePermission {
-    filetype: String,
-    user: Permission,
-    group: Permission,
-    other: Permission,
+    pub user: Permission,
+    pub group: Permission,
+    pub other: Permission,
+
+    pub filetype: String,
+    #[serde(skip_serializing)]
+    pub source_format: Option<SourceFormat>,
 
     #[serde(serialize_with = "serialize_special_permissions")]
-    special: [SpecialPermission; 3],
+    pub special: [SpecialPermission; 3],
 }
 
 #[allow(dead_code)]
 impl FilePermission {
     pub fn to_symbolic_str(&self) -> String {
+        return self.to_symbolic_bits_arr().join("");
+    }
+
+    pub fn to_symbolic_bits_arr(&self) -> [String; 3] {
         return [&self.user, &self.group, &self.other]
             .iter()
             .zip(SPECIAL_CHARS.iter())
             .map(|(perm, special_char)| perm.to_symbolic_str(special_char))
             .collect::<Vec<String>>()
-            .join("");
+            .try_into()
+            .unwrap();
     }
 
     pub fn to_octal_str(&self) -> String {
@@ -63,16 +77,6 @@ impl FilePermission {
             .join("");
 
         special_digit + &group_digits
-    }
-}
-
-impl FromStr for FilePermission {
-    type Err = String;
-
-    fn from_str(permission: &str) -> Result<Self, Self::Err> {
-        if Symbolic::is_valid(permission) {}
-
-        return Err(String::new());
     }
 }
 
@@ -99,6 +103,7 @@ impl From<Symbolic> for FilePermission {
             group,
             other,
             special: special_perms,
+            source_format: Some(SourceFormat::Symbolic),
             filetype: get_filetype_from_char(symbolic_perm.filetype),
         }
     }
@@ -133,6 +138,7 @@ impl From<Octal> for FilePermission {
             other,
             special: special_perms,
             filetype: get_filetype_from_char('0'),
+            source_format: Some(SourceFormat::Octal),
         }
     }
 }
@@ -151,7 +157,7 @@ impl TryFrom<&str> for FilePermission {
             return Ok(FilePermission::from(octal));
         }
 
-        return Err(format!("Invalid file permission '{perm_str}'"));
+        return Err(format!("Invalid file permission: {perm_str}!"));
     }
 }
 
@@ -161,6 +167,7 @@ pub struct Permission {
     pub read: bool,
     pub write: bool,
     pub execute: bool,
+    #[serde(skip_serializing)]
     pub special: bool,
 }
 
