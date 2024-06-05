@@ -1,12 +1,4 @@
-use cli::run_cli;
-
-mod cli;
-mod octal;
-mod perm;
-mod symbolic;
-mod utils;
-
-#[allow(unused)]
+use permcon::cli::run_cli;
 
 fn main() {
     run_cli()
