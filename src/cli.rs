@@ -114,6 +114,12 @@ pub fn run_cli() {
                 .collect::<Vec<String>>()
                 .join(", ");
 
+            let special_perm_str = if !special_perm_str.is_empty() {
+                special_perm_str
+            } else {
+                String::from("None")
+            };
+
             println!("{}: {}", "special permissions".green(), special_perm_str)
         }
         Err(message) => {
@@ -125,12 +131,17 @@ pub fn run_cli() {
 
 fn get_perm_description(perm: &Permission, special: &SpecialPermission) -> String {
     let mut desc = String::new();
-    if perm.read {
-        desc.push_str("read")
-    }
 
-    if perm.write {
-        desc.push_str(", write")
+    {
+        let read_and_write = [perm.read, perm.write]
+            .iter()
+            .zip(["read", "write"])
+            .filter(|(is_present, _)| **is_present)
+            .map(|(_, str)| str)
+            .collect::<Vec<&str>>()
+            .join(", ");
+
+        desc.push_str(&read_and_write);
     }
 
     let special_str = if *special != SpecialPermission::Nil {
