@@ -14,7 +14,7 @@ pub fn bool_arr_to_octal_digit(arr: [bool; 3]) -> u8 {
     u8::from_str_radix(&bin_str, 2).unwrap()
 }
 
-/// Parses the last char of permission bits (e.g., `"rwxrwxrwx"`, x) and
+/// Parses the last char of permission bits (e.g., the `x` of `"rwx"`) and
 /// returns `(execute, special)`
 #[allow(unused)]
 pub fn parse_symbolic_execution_bit(bit: char) -> (bool, bool) {
@@ -46,4 +46,40 @@ pub fn get_filetype_from_char(ft_char: char) -> String {
     };
 
     file_type.to_string()
+}
+
+#[allow(unused)]
+struct TestCase<I, O> {
+    input: I,
+    output: O,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_CASES: [(u8, [bool; 3]); 8] = [
+        (0, [false; 3]),
+        (1, [false, false, true]),
+        (2, [false, true, false]),
+        (3, [false, true, true]),
+        (4, [true, false, false]),
+        (5, [true, false, true]),
+        (6, [true, true, false]),
+        (7, [true, true, true]),
+    ];
+
+    #[test]
+    fn test_parse_octal_digit() {
+        for (digit, output) in TEST_CASES {
+            assert_eq!(parse_octal_digit(digit), output);
+        }
+    }
+
+    #[test]
+    fn test_bool_arr_to_octal_digit() {
+        for (digit, array) in TEST_CASES {
+            assert_eq!(bool_arr_to_octal_digit(array), digit);
+        }
+    }
 }
