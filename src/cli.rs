@@ -34,99 +34,100 @@ pub fn run_cli() {
 
     let permission = FilePermission::try_from(cli.permission.as_str());
 
-    match permission {
-        Ok(permission) => {
-            // print json
-            if cli.json {
-                let perm_json = json!(&permission);
-
-                let json_str = if cli.pretty {
-                    to_string_pretty(&perm_json).unwrap()
-                } else {
-                    perm_json.to_string()
-                };
-
-                println!("{}", json_str);
-                return;
-            }
-
-            // convert to the other format
-            if !cli.analyze {
-                if permission.source_format.as_ref().unwrap() == &SourceFormat::Octal {
-                    println!("{}", permission.to_symbolic_str())
-                } else {
-                    println!("{}", permission.to_octal_str())
-                }
-
-                return;
-            }
-
-            // disable color if no_color flag is provided
-            if cli.no_color {
-                yansi::disable()
-            }
-
-            let [user_bits, group_bits, other_bits] = permission.to_symbolic_bits_arr();
-            let [user_digit, group_digit, other_digit] = [
-                permission.user.to_octal_str(),
-                permission.group.to_octal_str(),
-                permission.other.to_octal_str(),
-            ];
-            let [suid, sgid, sticky_bit] = &permission.special;
-
-            println!("file type    : {}", permission.filetype);
-            println!("symbolic     : {}", permission.to_symbolic_str().green());
-            println!("octal        : {}", permission.to_octal_str().yellow());
-            println!("------------------------");
-            println!(
-                "{}{}, {}{}: {}",
-                "user (".green(),
-                user_bits,
-                user_digit,
-                ")".green(),
-                get_perm_description(&permission.user, suid),
-            );
-            println!(
-                "{}{}, {}{}: {}",
-                "group(".cyan(),
-                group_bits,
-                group_digit,
-                ")".cyan(),
-                get_perm_description(&permission.group, sgid),
-            );
-            println!(
-                "{}{}, {}{}: {}",
-                "other(".yellow(),
-                other_bits,
-                other_digit,
-                ")".yellow(),
-                get_perm_description(&permission.other, sticky_bit),
-            );
-            println!("------------------------");
-
-            let special_perm_str = permission
-                .special
-                .clone()
-                .iter()
-                .filter(|perm| **perm != SpecialPermission::Nil)
-                .map(|perm| serde_json::to_string(perm).unwrap())
-                .map(|str| str.trim_matches('"').to_string())
-                .collect::<Vec<String>>()
-                .join(", ");
-
-            let special_perm_str = if !special_perm_str.is_empty() {
-                special_perm_str
-            } else {
-                String::from("None")
-            };
-
-            println!("{}: {}", "special permissions".green(), special_perm_str)
-        }
-        Err(message) => {
-            eprintln!("{}", message);
-            std::process::exit(1);
-        }
+    // if permission is invalid then exit early
+    if let Err(message) = permission {
+        eprintln!("{}", message);
+        std::process::exit(1);
     }
+
+    let permission = permission.unwrap();
+
+    // print json
+    if cli.json {
+        let perm_json = json!(&permission);
+
+        let json_str = if cli.pretty {
+            to_string_pretty(&perm_json).unwrap()
+        } else {
+            perm_json.to_string()
+        };
+
+        println!("{}", json_str);
+        return;
+    }
+
+    // convert to the other format
+    if !cli.analyze {
+        if permission.source_format == Some(SourceFormat::Octal) {
+            println!("{}", permission.to_symbolic_str())
+        } else {
+            println!("{}", permission.to_octal_str())
+        }
+
+        return;
+    }
+
+    // disable color if no_color flag is provided
+    if cli.no_color {
+        yansi::disable()
+    }
+
+    let [user_bits, group_bits, other_bits] = permission.to_symbolic_bits_arr();
+    let [user_digit, group_digit, other_digit] = permission
+        .to_perm_group_array()
+        .map(|group| group.to_octal_digit());
+
+    let [suid, sgid, sticky_bit] = &permission.special;
+
+    println!("file type    : {}", permission.filetype);
+    println!("symbolic     : {}", permission.to_symbolic_str().green());
+    println!("octal        : {}", permission.to_octal_str().yellow());
+    println!("------------------------");
+    println!(
+        "{}{}, {}{}: {}",
+        "user (".green(),
+        user_bits,
+        user_digit,
+        ")".green(),
+        get_perm_description(&permission.user, suid),
+    );
+    println!(
+        "{}{}, {}{}: {}",
+        "group(".cyan(),
+        group_bits,
+        group_digit,
+        ")".cyan(),
+        get_perm_description(&permission.group, sgid),
+    );
+    println!(
+        "{}{}, {}{}: {}",
+        "other(".yellow(),
+        other_bits,
+        other_digit,
+        ")".yellow(),
+        get_perm_description(&permission.other, sticky_bit),
+    );
+    println!("------------------------");
+
+    let mut special_perm_str = permission
+        .special
+        .iter()
+        .filter(|perm| **perm != SpecialPermission::Nil)
+        .map(|perm| {
+            serde_json::to_string(perm)
+                .unwrap()
+                .trim_matches('"')
+                .to_string()
+        })
+        .collect::<Vec<String>>();
+
+    if special_perm_str.is_empty() {
+        special_perm_str.push(String::from("None"))
+    }
+
+    let special_perm_str = special_perm_str.join(", ");
+
+    println!("{}: {}", "special permissions".green(), special_perm_str)
 }
 
 fn get_perm_description(perm: &Permission, special: &SpecialPermission) -> String {
@@ -136,30 +137,34 @@ fn get_perm_description(perm: &Permission, special: &SpecialPermission) -> Strin
         let read_and_write = [perm.read, perm.write]
             .iter()
             .zip(["read", "write"])
-            .filter(|(is_present, _)| **is_present)
-            .map(|(_, str)| str)
-            .collect::<Vec<&str>>()
+            .map(|(is_present, str)| {
+                if *is_present {
+                    return str.to_string();
+                }
+
+                ["_", &" ".repeat(str.len() - 1)].join("")
+            })
+            .collect::<Vec<String>>()
             .join(", ");
 
         desc.push_str(&read_and_write);
     }
 
-    let special_str = if *special != SpecialPermission::Nil {
-        let str = serde_json::to_string(&special).unwrap();
-        str.trim_matches('"').to_string()
-    } else {
-        String::new()
-    };
+    desc.push_str(", ");
 
-    if perm.execute {
-        if !special_str.is_empty() {
-            desc.push_str(format!(", (execute, {})", special_str.as_str()).as_str());
-        } else {
-            desc.push_str(", execute");
-        }
-    } else if !special_str.is_empty() {
-        desc.push_str(format!(", (_, {})", special_str.as_str()).as_str());
+    let execute_str = if perm.execute { "execute" } else { "_" };
+
+    if *special == SpecialPermission::Nil {
+        desc.push_str(execute_str);
+        return desc;
     }
+
+    let special_str = serde_json::to_string(&special)
+        .unwrap()
+        .trim_matches('"')
+        .to_string();
+
+    desc.push_str(format!("({}, {})", execute_str, special_str).as_str());
 
     return desc;
 }

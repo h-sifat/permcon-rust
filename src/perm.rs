@@ -12,13 +12,14 @@ use crate::{
 use serde::{Serialize, Serializer};
 
 const SPECIAL_CHARS: [char; 3] = ['s', 's', 't'];
+const SPECIAL_PERMISSIONS_ORDER: [SpecialPermission; 3] = [SUID, SGID, StickyBit];
 
 #[derive(Debug, PartialEq, Serialize, Clone)]
 pub enum SpecialPermission {
-    SUID,
-    SGID,
-    StickyBit,
     Nil,
+    SGID,
+    SUID,
+    StickyBit,
 }
 
 use crate::perm::SpecialPermission::*;
@@ -36,6 +37,10 @@ pub struct FilePermission {
     pub other: Permission,
 
     pub filetype: String,
+
+    #[serde(skip_serializing)]
+    pub filetype_char: char,
+
     #[serde(skip_serializing)]
     pub source_format: Option<SourceFormat>,
 
@@ -46,63 +51,65 @@ pub struct FilePermission {
 #[allow(dead_code)]
 impl FilePermission {
     pub fn to_symbolic_str(&self) -> String {
-        return self.to_symbolic_bits_arr().join("");
+        self.filetype_char.to_string() + self.to_symbolic_bits_arr().join("").as_str()
     }
 
     pub fn to_symbolic_bits_arr(&self) -> [String; 3] {
-        return [&self.user, &self.group, &self.other]
+        [&self.user, &self.group, &self.other]
             .iter()
             .zip(SPECIAL_CHARS.iter())
             .map(|(perm, special_char)| perm.to_symbolic_str(special_char))
             .collect::<Vec<String>>()
             .try_into()
-            .unwrap();
+            .unwrap()
     }
 
     pub fn to_octal_str(&self) -> String {
         let special_digit = {
-            let special: [bool; 3] = self
-                .special
-                .iter()
-                .map(|val| (*val != Nil))
-                .collect::<Vec<bool>>()
-                .try_into()
-                .unwrap();
-
+            let special: &[bool; 3] = &self.special.clone().map(|val| (val != Nil));
             bool_arr_to_octal_digit(special).to_string()
         };
 
         let group_digits = [&self.user, &self.group, &self.other]
-            .map(|perm| perm.to_octal_str().to_string())
+            .map(|perm| perm.to_octal_digit().to_string())
             .join("");
 
         special_digit + &group_digits
     }
+
+    pub fn to_perm_group_array(&self) -> [&Permission; 3] {
+        [&self.user, &self.group, &self.other]
+    }
+}
+
+fn get_special_perms_array<T, U>(source_array: &[T; 3], is_special: U) -> [SpecialPermission; 3]
+where
+    U: Fn(&T) -> bool,
+{
+    source_array
+        .iter()
+        .zip(SPECIAL_PERMISSIONS_ORDER)
+        .map(|(source_val, perm)| if is_special(source_val) { perm } else { Nil })
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap()
 }
 
 impl From<Symbolic> for FilePermission {
     fn from(symbolic_perm: Symbolic) -> Self {
-        let [user, group, other]: [Permission; 3] =
+        let perm_group_array: [Permission; 3] =
             [symbolic_perm.user, symbolic_perm.group, symbolic_perm.other]
-                .iter()
-                .map(|perm_bits| Permission::from_symbolic_bits(&perm_bits).unwrap())
-                .collect::<Vec<Permission>>()
-                .try_into()
-                .unwrap();
+                .map(|perm_bits| Permission::from_symbolic_bits(&perm_bits).unwrap());
 
-        let special_perms: [SpecialPermission; 3] = [&user, &group, &other]
-            .iter()
-            .zip([SUID, SGID, StickyBit])
-            .map(|(perm, special_perm)| if perm.special { special_perm } else { Nil })
-            .collect::<Vec<SpecialPermission>>()
-            .try_into()
-            .unwrap();
+        let special_perms = get_special_perms_array(&perm_group_array, |perm| perm.special);
+        let [user, group, other] = perm_group_array;
 
         FilePermission {
             user,
             group,
             other,
             special: special_perms,
+            filetype_char: symbolic_perm.filetype,
             source_format: Some(SourceFormat::Symbolic),
             filetype: get_filetype_from_char(symbolic_perm.filetype),
         }
@@ -111,31 +118,26 @@ impl From<Symbolic> for FilePermission {
 
 impl From<Octal> for FilePermission {
     fn from(octal_perm: Octal) -> Self {
-        let special_perms = parse_octal_digit(octal_perm.special);
+        let special_perms = parse_octal_digit(octal_perm.special).unwrap();
 
         let [user, group, other]: [Permission; 3] =
             [octal_perm.user, octal_perm.group, octal_perm.other]
                 .iter()
-                .zip(special_perms.iter())
+                .zip(special_perms)
                 .map(|(digit, is_special)| {
-                    Permission::from_octal_digit(*digit, *is_special).unwrap()
+                    Permission::from_octal_digit(*digit, is_special).unwrap()
                 })
-                .collect::<Vec<Permission>>()
+                .collect::<Vec<_>>()
                 .try_into()
                 .unwrap();
 
-        let special_perms: [SpecialPermission; 3] = special_perms
-            .iter()
-            .zip([SUID, SGID, StickyBit])
-            .map(|(is_special, perm)| if *is_special { perm } else { Nil })
-            .collect::<Vec<SpecialPermission>>()
-            .try_into()
-            .unwrap();
+        let special_perms = get_special_perms_array(&special_perms, |is_special| *is_special);
 
         FilePermission {
             user,
             group,
             other,
+            filetype_char: '-',
             special: special_perms,
             filetype: get_filetype_from_char('0'),
             source_format: Some(SourceFormat::Octal),
@@ -147,13 +149,11 @@ impl TryFrom<&str> for FilePermission {
     type Error = String;
 
     fn try_from(perm_str: &str) -> Result<Self, Self::Error> {
-        if Symbolic::is_valid(perm_str) {
-            let symbolic = Symbolic::from_str(perm_str).unwrap();
+        if let Ok(symbolic) = Symbolic::from_str(perm_str) {
             return Ok(FilePermission::from(symbolic));
         }
 
-        if Octal::is_valid(perm_str) {
-            let octal = Octal::from_str(perm_str).unwrap();
+        if let Ok(octal) = Octal::from_str(perm_str) {
             return Ok(FilePermission::from(octal));
         }
 
@@ -192,42 +192,50 @@ impl Permission {
     }
 
     pub fn from_octal_digit(digit: u8, is_special: bool) -> Result<Self, String> {
-        let [read, write, execute] = parse_octal_digit(digit);
-        return Ok(Permission {
+        let [read, write, execute] = parse_octal_digit(digit).unwrap();
+
+        Ok(Permission {
             read,
             write,
             execute,
             special: is_special,
-        });
+        })
     }
 
     pub fn to_symbolic_str(&self, special_char: &char) -> String {
-        let mut permission = String::new();
+        let mut permission: String = ['r', 'w', 'x']
+            .into_iter()
+            .zip(self.as_rwx_array())
+            .map(|(char, is_present)| if is_present { char } else { '-' })
+            .collect();
 
-        permission.push(if self.read { 'r' } else { '-' });
-        permission.push(if self.write { 'w' } else { '-' });
-
-        if self.special {
-            permission.push(if self.execute {
-                special_char.clone()
-            } else {
-                special_char.to_uppercase().next().unwrap()
-            });
-        } else {
-            permission.push(if self.execute { 'x' } else { '-' });
+        if !self.special {
+            return permission;
         }
 
-        return permission;
+        let mut x = *special_char;
+        if !self.execute {
+            x = special_char.to_ascii_uppercase()
+        }
+
+        permission.pop();
+        permission.push(x);
+
+        permission
     }
 
-    pub fn to_octal_str(&self) -> u8 {
-        bool_arr_to_octal_digit([self.read, self.write, self.execute])
+    pub fn to_octal_digit(&self) -> u8 {
+        bool_arr_to_octal_digit(&self.as_rwx_array())
+    }
+
+    pub fn as_rwx_array(&self) -> [bool; 3] {
+        [self.read, self.write, self.execute]
     }
 }
 
 // ---------- Util to serialize FilePermission::special field -------------
 fn serialize_special_permissions<S>(
-    permissions: &[SpecialPermission; 3],
+    perms: &[SpecialPermission; 3],
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where
@@ -240,17 +248,12 @@ where
         sticky_bit: bool,
     }
 
-    let [suid, sgid, sticky_bit]: [bool; 3] = permissions
-        .iter()
-        .map(|perm| *perm != SpecialPermission::Nil)
-        .collect::<Vec<bool>>()
-        .try_into()
-        .unwrap();
+    let is_set = |value: &SpecialPermission| value == &SpecialPermission::Nil;
 
     let special_permissions = SerializedSpecialPermissions {
-        suid,
-        sgid,
-        sticky_bit,
+        suid: is_set(&perms[0]),
+        sgid: is_set(&perms[1]),
+        sticky_bit: is_set(&perms[2]),
     };
 
     special_permissions.serialize(serializer)

@@ -11,7 +11,6 @@ lazy_static! {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct Octal {
     pub special: u8,
     pub user: u8,
@@ -19,9 +18,8 @@ pub struct Octal {
     pub other: u8,
 }
 
-#[allow(dead_code)]
 impl Octal {
-    pub fn from_array(values: [u8; 4]) -> Self {
+    pub(crate) fn from_array(values: [u8; 4]) -> Self {
         let [special, user, group, other] = values;
 
         Octal {
@@ -32,16 +30,21 @@ impl Octal {
         }
     }
 
+    /// Checks whether the given permission string is a valid permission in the
+    /// octal notation.
     pub fn is_valid(permission: &str) -> bool {
         return OCTAL_PATTERN.is_match(permission);
     }
 
+    /// Tries to parse the permission string into the Octal struct
     pub fn from_str(permission: &str) -> Result<Self, String> {
         if !Self::is_valid(permission) {
             return Err(String::from("Invalid octal permission."));
         }
 
-        let caps = OCTAL_PATTERN.captures(permission).unwrap();
+        let caps = OCTAL_PATTERN.captures(permission).expect(
+            "The permission must be valid as we've already checked with the is_valid method.",
+        );
 
         let values = OCTAL_PATTERN_GROUPS.map(|group_name| {
             caps.name(group_name)
