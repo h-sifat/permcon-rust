@@ -45,7 +45,7 @@
 //! ❯ permcon -- rwxrwxr-t
 //! # 1775
 //!
-//! # Note: a `--` is required if permission string starts with an `-`.
+//! # Note: a `--` is required if the permission string starts with an `-`.
 //! ❯ permcon -- -rwxrwxr-t
 //! # 1775
 //!
