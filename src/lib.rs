@@ -1,4 +1,4 @@
-//! A simple library/CLI to parse Linux file system permissions and convert them between symbolic
+//! A simple library/CLI to parse Linux file permissions and convert them between symbolic
 //! and octal notation.
 //!
 //! ## Library Usages
@@ -42,6 +42,10 @@
 //! ❯ permcon 1754
 //! # -rwxr-xr-T
 //!
+//! ❯ permcon -- rwxrwxr-t
+//! # 1775
+//!
+//! # Note: a `--` is required if permission string starts with an `-`.
 //! ❯ permcon -- -rwxrwxr-t
 //! # 1775
 //!
