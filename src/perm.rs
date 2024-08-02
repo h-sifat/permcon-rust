@@ -24,17 +24,21 @@ pub enum SpecialPermission {
 
 use crate::perm::SpecialPermission::*;
 
+/// Represents the source notation (symbolic or octal) from which the FilePermission has been
+/// parsed.
 #[derive(Debug, PartialEq, Serialize)]
 pub enum SourceFormat {
     Octal,
     Symbolic,
 }
 
-#[derive(Debug, Serialize)]
+/// Represents a parsed file permission and provides methods to convert the
+/// file permission to different notations.
+#[derive(Debug, Serialize, PartialEq)]
 pub struct FilePermission {
-    pub user: Permission,
-    pub group: Permission,
-    pub other: Permission,
+    pub user: GroupPermission,
+    pub group: GroupPermission,
+    pub other: GroupPermission,
 
     pub filetype: String,
 
@@ -48,12 +52,13 @@ pub struct FilePermission {
     pub special: [SpecialPermission; 3],
 }
 
-#[allow(dead_code)]
 impl FilePermission {
+    /// Serializes the `FilePermission` into symbolic notation.
     pub fn to_symbolic_str(&self) -> String {
         self.filetype_char.to_string() + self.to_symbolic_bits_arr().join("").as_str()
     }
 
+    /// Returns symbolic bin_str (e.g., `rwx`) (`[String; 3]`) array.
     pub fn to_symbolic_bits_arr(&self) -> [String; 3] {
         [&self.user, &self.group, &self.other]
             .iter()
@@ -64,6 +69,7 @@ impl FilePermission {
             .unwrap()
     }
 
+    /// Serializes the `FilePermission` into octal notation.
     pub fn to_octal_str(&self) -> String {
         let special_digit = {
             let special: &[bool; 3] = &self.special.clone().map(|val| (val != Nil));
@@ -77,7 +83,8 @@ impl FilePermission {
         special_digit + &group_digits
     }
 
-    pub fn to_perm_group_array(&self) -> [&Permission; 3] {
+    /// Returns `[&GroupPermission; 3]` as `[user, group, other]`
+    pub fn to_perm_group_array(&self) -> [&GroupPermission; 3] {
         [&self.user, &self.group, &self.other]
     }
 }
@@ -97,9 +104,9 @@ where
 
 impl From<Symbolic> for FilePermission {
     fn from(symbolic_perm: Symbolic) -> Self {
-        let perm_group_array: [Permission; 3] =
+        let perm_group_array: [GroupPermission; 3] =
             [symbolic_perm.user, symbolic_perm.group, symbolic_perm.other]
-                .map(|perm_bits| Permission::from_symbolic_bits(&perm_bits).unwrap());
+                .map(|perm_bits| GroupPermission::from_symbolic_bits(&perm_bits).unwrap());
 
         let special_perms = get_special_perms_array(&perm_group_array, |perm| perm.special);
         let [user, group, other] = perm_group_array;
@@ -120,12 +127,12 @@ impl From<Octal> for FilePermission {
     fn from(octal_perm: Octal) -> Self {
         let special_perms = parse_octal_digit(octal_perm.special).unwrap();
 
-        let [user, group, other]: [Permission; 3] =
+        let [user, group, other]: [GroupPermission; 3] =
             [octal_perm.user, octal_perm.group, octal_perm.other]
                 .iter()
                 .zip(special_perms)
                 .map(|(digit, is_special)| {
-                    Permission::from_octal_digit(*digit, is_special).unwrap()
+                    GroupPermission::from_octal_digit(*digit, is_special).unwrap()
                 })
                 .collect::<Vec<_>>()
                 .try_into()
@@ -161,9 +168,9 @@ impl TryFrom<&str> for FilePermission {
     }
 }
 
-#[derive(Debug, Serialize)]
-#[allow(dead_code)]
-pub struct Permission {
+/// Represents a parsed group (user, group and other) permission.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct GroupPermission {
     pub read: bool,
     pub write: bool,
     pub execute: bool,
@@ -171,8 +178,24 @@ pub struct Permission {
     pub special: bool,
 }
 
-#[allow(dead_code)]
-impl Permission {
+impl GroupPermission {
+    /// Tries to parse symbolic_bits (e.g., `rwx`) into `GroupPermission`.
+    /// <br>
+    /// ## Example
+    /// ```rust
+    /// use permcon::perm::GroupPermission;
+    ///
+    /// let bits = "r-t";
+    /// assert_eq!(
+    ///     GroupPermission::from_symbolic_bits(bits).unwrap(),
+    ///     GroupPermission {
+    ///         read: true,
+    ///         write: false,
+    ///         execute: true,
+    ///         special: true,
+    ///     }
+    /// );
+    /// ```
     pub fn from_symbolic_bits(bits: &str) -> Result<Self, String> {
         let chars: Vec<char> = bits.chars().collect();
 
@@ -180,7 +203,7 @@ impl Permission {
             [r, w, x] => {
                 let (execute, special) = parse_symbolic_execution_bit(x);
 
-                return Ok(Permission {
+                return Ok(GroupPermission {
                     execute,
                     special,
                     read: r == 'r',
@@ -191,10 +214,27 @@ impl Permission {
         }
     }
 
+    /// Tries to parse an octal digit into a `GroupPermission`.
+    /// <br>
+    /// ## Example
+    ///
+    /// ```rust
+    /// use permcon::perm::GroupPermission;
+    ///
+    /// assert_eq!(
+    ///     GroupPermission::from_octal_digit(5u8, false).unwrap(),
+    ///     GroupPermission {
+    ///         read: true,
+    ///         write: false,
+    ///         execute: true,
+    ///         special: false,
+    ///     }
+    /// );
+    /// ```
     pub fn from_octal_digit(digit: u8, is_special: bool) -> Result<Self, String> {
         let [read, write, execute] = parse_octal_digit(digit).unwrap();
 
-        Ok(Permission {
+        Ok(GroupPermission {
             read,
             write,
             execute,
@@ -202,6 +242,7 @@ impl Permission {
         })
     }
 
+    /// Returns a symbolic  triplet (e.g., `rwx`) representing the GroupPermission;
     pub fn to_symbolic_str(&self, special_char: &char) -> String {
         let mut permission: String = ['r', 'w', 'x']
             .into_iter()
@@ -224,10 +265,12 @@ impl Permission {
         permission
     }
 
+    /// Returns an octal digit representing the `GroupPermission`.
     pub fn to_octal_digit(&self) -> u8 {
         bool_arr_to_octal_digit(&self.as_rwx_array())
     }
 
+    /// Returns `[read, write, execute]` as `[bool; 3]`.
     pub fn as_rwx_array(&self) -> [bool; 3] {
         [self.read, self.write, self.execute]
     }

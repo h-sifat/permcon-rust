@@ -1,5 +1,5 @@
-use permcon::cli::run_cli;
+mod cli;
 
 fn main() {
-    run_cli()
+    cli::run_cli()
 }

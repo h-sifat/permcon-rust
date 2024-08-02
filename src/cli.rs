@@ -2,7 +2,7 @@ use clap::Parser;
 use serde_json::{json, to_string_pretty};
 use yansi::Paint;
 
-use crate::perm::{FilePermission, Permission, SourceFormat, SpecialPermission};
+use permcon::perm::{FilePermission, GroupPermission, SourceFormat, SpecialPermission};
 
 /// A CLI to parse Linux file system permissions and convert them
 /// between symbolic and octal formats.
@@ -130,7 +130,7 @@ pub fn run_cli() {
     println!("{}: {}", "special permissions".green(), special_perm_str)
 }
 
-fn get_perm_description(perm: &Permission, special: &SpecialPermission) -> String {
+fn get_perm_description(perm: &GroupPermission, special: &SpecialPermission) -> String {
     let mut desc = String::new();
 
     {

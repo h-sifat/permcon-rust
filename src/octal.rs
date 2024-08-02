@@ -5,12 +5,30 @@ use regex::Regex;
 const OCTAL_PATTERN_GROUPS: [&str; 4] = ["special", "user", "group", "other"];
 
 lazy_static! {
+    /// A pattern to parse file permission in octal (1666) notation.
+    ///
+    /// `pattern = r"(?x)^(?P<special>[0-7])?(?P<user>[0-7])(?P<group>[0-7])(?P<other>[0-7])$"`
     pub static ref OCTAL_PATTERN: Regex =
         Regex::new(r"(?x)^(?P<special>[0-7])?(?P<user>[0-7])(?P<group>[0-7])(?P<other>[0-7])$")
             .unwrap();
 }
 
-#[derive(Debug)]
+/// Represents a parsed octal permission.
+///
+/// ``` rust
+/// use permcon::octal::Octal;
+///
+/// let perm = "1641";
+///
+/// assert!(Octal::is_valid(perm));
+/// assert_eq!(Octal::from_str(perm).unwrap(), Octal {
+///     special: 1,
+///     user: 6,
+///     group: 4,
+///     other: 1,
+/// });
+/// ```
+#[derive(Debug, PartialEq, Eq)]
 pub struct Octal {
     pub special: u8,
     pub user: u8,
@@ -19,17 +37,6 @@ pub struct Octal {
 }
 
 impl Octal {
-    pub(crate) fn from_array(values: [u8; 4]) -> Self {
-        let [special, user, group, other] = values;
-
-        Octal {
-            user,
-            group,
-            other,
-            special,
-        }
-    }
-
     /// Checks whether the given permission string is a valid permission in the
     /// octal notation.
     pub fn is_valid(permission: &str) -> bool {
@@ -46,11 +53,16 @@ impl Octal {
             "The permission must be valid as we've already checked with the is_valid method.",
         );
 
-        let values = OCTAL_PATTERN_GROUPS.map(|group_name| {
+        let [special, user, group, other] = OCTAL_PATTERN_GROUPS.map(|group_name| {
             caps.name(group_name)
                 .map_or(0, |val| val.as_str().parse::<u8>().unwrap())
         });
 
-        Ok(Octal::from_array(values))
+        Ok(Octal {
+            user,
+            group,
+            other,
+            special,
+        })
     }
 }
