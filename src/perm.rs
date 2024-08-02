@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use crate::{
     octal::Octal,
     symbolic::Symbolic,
@@ -8,8 +6,9 @@ use crate::{
         parse_symbolic_execution_bit,
     },
 };
-
 use serde::{Serialize, Serializer};
+use serde_json::{json, to_string_pretty};
+use std::str::FromStr;
 
 const SPECIAL_CHARS: [char; 3] = ['s', 's', 't'];
 const SPECIAL_PERMISSIONS_ORDER: [SpecialPermission; 3] = [SUID, SGID, StickyBit];
@@ -86,6 +85,18 @@ impl FilePermission {
     /// Returns `[&GroupPermission; 3]` as `[user, group, other]`
     pub fn to_perm_group_array(&self) -> [&GroupPermission; 3] {
         [&self.user, &self.group, &self.other]
+    }
+
+    /// Returns a serialized JSON string. If `pretty` is `true` then beautifies
+    /// the JSON string.
+    pub fn to_json(&self, pretty: bool) -> String {
+        let perm_json = json!(&self);
+
+        if pretty {
+            return to_string_pretty(&perm_json).unwrap();
+        }
+
+        perm_json.to_string()
     }
 }
 

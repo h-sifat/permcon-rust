@@ -1,5 +1,4 @@
 use clap::Parser;
-use serde_json::{json, to_string_pretty};
 use yansi::Paint;
 
 use permcon::perm::{FilePermission, GroupPermission, SourceFormat, SpecialPermission};
@@ -44,15 +43,7 @@ pub fn run_cli() {
 
     // print json
     if cli.json {
-        let perm_json = json!(&permission);
-
-        let json_str = if cli.pretty {
-            to_string_pretty(&perm_json).unwrap()
-        } else {
-            perm_json.to_string()
-        };
-
-        println!("{}", json_str);
+        println!("{}", permission.to_json(cli.pretty));
         return;
     }
 
