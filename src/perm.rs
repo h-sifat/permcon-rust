@@ -59,7 +59,7 @@ impl FilePermission {
 
     /// Returns symbolic bin_str (e.g., `rwx`) (`[String; 3]`) array.
     pub fn to_symbolic_bits_arr(&self) -> [String; 3] {
-        [&self.user, &self.group, &self.other]
+        self.to_perm_group_array()
             .iter()
             .zip(SPECIAL_CHARS.iter())
             .map(|(perm, special_char)| perm.to_symbolic_str(special_char))
@@ -75,7 +75,8 @@ impl FilePermission {
             bool_arr_to_octal_digit(special).to_string()
         };
 
-        let group_digits = [&self.user, &self.group, &self.other]
+        let group_digits = self
+            .to_perm_group_array()
             .map(|perm| perm.to_octal_digit().to_string())
             .join("");
 
