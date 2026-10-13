@@ -21,7 +21,7 @@ lazy_static! {
 /// let perm = "1641";
 ///
 /// assert!(Octal::is_valid(perm));
-/// assert_eq!(Octal::from_str(perm).unwrap(), Octal {
+/// assert_eq!(Octal::try_from(perm).unwrap(), Octal {
 ///     special: 1,
 ///     user: 6,
 ///     group: 4,
@@ -40,11 +40,14 @@ impl Octal {
     /// Checks whether the given permission string is a valid permission in the
     /// octal notation.
     pub fn is_valid(permission: &str) -> bool {
-        return OCTAL_PATTERN.is_match(permission);
+        OCTAL_PATTERN.is_match(permission)
     }
+}
 
-    /// Tries to parse the permission string into the Octal struct
-    pub fn from_str(permission: &str) -> Result<Self, String> {
+impl TryFrom<&str> for Octal {
+    type Error = String;
+
+    fn try_from(permission: &str) -> Result<Self, String> {
         if !Self::is_valid(permission) {
             return Err(String::from("Invalid octal permission."));
         }
@@ -64,5 +67,16 @@ impl Octal {
             other,
             special,
         })
+    }
+}
+
+impl From<u32> for Octal {
+    fn from(mode: u32) -> Self {
+        Octal {
+            special: ((mode >> 9) & 0o7) as u8,
+            user: ((mode >> 6) & 0o7) as u8,
+            group: ((mode >> 3) & 0o7) as u8,
+            other: (mode & 0o7) as u8,
+        }
     }
 }

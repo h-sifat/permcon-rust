@@ -71,7 +71,7 @@ pub fn parse_symbolic_execution_bit(bit: char) -> (bool, bool) {
         return (true, false);
     }
 
-    return (false, false);
+    (false, false)
 }
 
 /// Returns the full file type from the symbolic file type char.
@@ -99,8 +99,9 @@ pub fn get_filetype_from_char(ft_char: char) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::octal::Octal;
 
-    const TEST_CASES: [(u8, [bool; 3]); 8] = [
+    const OCTAL_TEST_CASES: [(u8, [bool; 3]); 8] = [
         (0, [false; 3]),
         (1, [false, false, true]),
         (2, [false, true, false]),
@@ -111,17 +112,45 @@ mod tests {
         (7, [true, true, true]),
     ];
 
+    const MODE_TEST_CASES: [(u32, [u8; 4]); 9] = [
+        (0o0000, [0, 0, 0, 0]),
+        (0o0755, [0, 7, 5, 5]),
+        (0o0644, [0, 6, 4, 4]),
+        (0o4755, [4, 7, 5, 5]),
+        (0o2755, [2, 7, 5, 5]),
+        (0o1777, [1, 7, 7, 7]),
+        (0o7741, [7, 7, 4, 1]),
+        (0o104755, [4, 7, 5, 5]),
+        (0o041777, [1, 7, 7, 7]),
+    ];
+
     #[test]
     fn test_parse_octal_digit() {
-        for (digit, output) in TEST_CASES {
+        for (digit, output) in OCTAL_TEST_CASES {
             assert_eq!(parse_octal_digit(digit), Ok(output));
         }
     }
 
     #[test]
     fn test_bool_arr_to_octal_digit() {
-        for (digit, array) in TEST_CASES {
+        for (digit, array) in OCTAL_TEST_CASES {
             assert_eq!(bool_arr_to_octal_digit(&array), digit);
+        }
+    }
+
+    #[test]
+    fn octal_from_mode() {
+        for (mode, [special, user, group, other]) in MODE_TEST_CASES {
+            assert_eq!(
+                Octal::from(mode),
+                Octal {
+                    special,
+                    user,
+                    group,
+                    other,
+                },
+                "Incorrect conversion for mode {mode:#o}"
+            );
         }
     }
 }

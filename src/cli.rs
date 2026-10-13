@@ -1,15 +1,23 @@
 use clap::Parser;
 use yansi::Paint;
 
-use permcon::perm::{FilePermission, GroupPermission, SourceFormat, SpecialPermission};
+use permcon::{
+    octal::Octal,
+    perm::{FilePermission, GroupPermission, SourceFormat, SpecialPermission},
+};
+use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 
 /// A CLI to parse Linux file system permissions and convert them
 /// between symbolic and octal formats.
 #[derive(Debug, Parser)]
 #[command(version)]
 struct Cli {
-    /// The permission string, either octal or symbolic
-    permission: String,
+    /// The input string; either an octal or symbolic permission, or the path to the file to be analyzed.
+    input: String,
+
+    /// Analyze a file's permissions.
+    #[arg(short = 'f', long, conflicts_with = "json")]
+    file: bool,
 
     /// Print detailed analysis
     #[arg(short, long, conflicts_with = "json")]
@@ -31,7 +39,43 @@ struct Cli {
 pub fn run_cli() {
     let cli = Cli::parse();
 
-    let permission = FilePermission::try_from(cli.permission.as_str());
+    let permission = if cli.file {
+        match std::fs::symlink_metadata(&cli.input) {
+            Ok(metadata) => {
+                let mut permissions =
+                    FilePermission::from(Octal::from(metadata.permissions().mode()));
+                permissions.filetype_char = {
+                    let file_type = metadata.file_type();
+                    if file_type.is_file() {
+                        '-'
+                    } else if file_type.is_dir() {
+                        'd'
+                    } else if file_type.is_symlink() {
+                        'l'
+                    } else if file_type.is_block_device() {
+                        'b'
+                    } else if file_type.is_char_device() {
+                        'c'
+                    } else if file_type.is_socket() {
+                        's'
+                    } else if file_type.is_fifo() {
+                        'p'
+                    } else {
+                        '?'
+                    }
+                };
+                permissions.filetype =
+                    permcon::utils::get_filetype_from_char(permissions.filetype_char);
+                Ok(permissions)
+            }
+            Err(e) => {
+                eprintln!("Could not access file {}; Error: {e}", cli.input);
+                std::process::exit(1);
+            }
+        }
+    } else {
+        FilePermission::try_from(cli.input.as_str())
+    };
 
     // if permission is invalid then exit early
     if let Err(message) = permission {
@@ -157,5 +201,5 @@ fn get_perm_description(perm: &GroupPermission, special: &SpecialPermission) -> 
 
     desc.push_str(format!("({}, {})", execute_str, special_str).as_str());
 
-    return desc;
+    desc
 }

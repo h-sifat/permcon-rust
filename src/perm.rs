@@ -71,7 +71,7 @@ impl FilePermission {
     /// Serializes the `FilePermission` into octal notation.
     pub fn to_octal_str(&self) -> String {
         let special_digit = {
-            let special: &[bool; 3] = &self.special.clone().map(|val| (val != Nil));
+            let special: &[bool; 3] = &self.special.clone().map(|val| val != Nil);
             bool_arr_to_octal_digit(special).to_string()
         };
 
@@ -172,11 +172,11 @@ impl TryFrom<&str> for FilePermission {
             return Ok(FilePermission::from(symbolic));
         }
 
-        if let Ok(octal) = Octal::from_str(perm_str) {
+        if let Ok(octal) = Octal::try_from(perm_str) {
             return Ok(FilePermission::from(octal));
         }
 
-        return Err(format!("Invalid file permission: {perm_str}!"));
+        Err(format!("Invalid file permission: {perm_str}!"))
     }
 }
 
@@ -215,14 +215,14 @@ impl GroupPermission {
             [r, w, x] => {
                 let (execute, special) = parse_symbolic_execution_bit(x);
 
-                return Ok(GroupPermission {
+                Ok(GroupPermission {
                     execute,
                     special,
                     read: r == 'r',
                     write: w == 'w',
-                });
+                })
             }
-            _ => return Err(String::from("Invalid permission bits length!")),
+            _ => Err(String::from("Invalid permission bits length!")),
         }
     }
 

@@ -44,7 +44,7 @@ impl Symbolic {
     /// Checks whether the given permission string is a valid permission in the
     /// symbolic notation.
     pub fn is_valid(permission: &str) -> bool {
-        return SYMBOLIC_PATTERN.is_match(permission);
+        SYMBOLIC_PATTERN.is_match(permission)
     }
 }
 
@@ -63,7 +63,7 @@ impl FromStr for Symbolic {
 
         let values = SYMBOLIC_PATTERN_GROUPS
             .map(|group_name| caps.name(group_name).map_or("-", |val| val.as_str()))
-            .map(|val| String::from(val));
+            .map(String::from);
 
         let [filetype, user, group, other] = values;
 
